@@ -1,0 +1,60 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    
+    <!-- Package Information -->
+    <PackageId>SimpleMapper</PackageId>
+    <Title>SimpleMapper</Title>
+    <PackageVersion>1.1.0</PackageVersion>
+    <Authors>Your Name</Authors>
+    <Company>Your Company</Company>
+    <Description>A high-performance, reflection-free object mapper library with automatic registration support. Perfect for clean architecture applications.</Description>
+    <PackageTags>mapper;mapping;object-mapping;dto;entity;clean-architecture;dependency-injection;performance</PackageTags>
+    <PackageProjectUrl>https://github.com/yourusername/SimpleMapper</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/yourusername/SimpleMapper</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReleaseNotes>
+      v1.1.0:
+      - NEW: Automatic mapper inference - AddMapper&lt;TSource, TDestination&gt;()
+      - NEW: Type inference for mapping - Map&lt;TDestination&gt;(source)
+      - NEW: Duplicate mapper detection and validation
+      - BREAKING: Removed FunctionMapper for cleaner, class-only API
+      - Enhanced error messages and validation
+      - Improved documentation and examples
+      
+      v1.0.0:
+      - Initial release
+      - High-performance, reflection-free mapping
+      - Automatic mapper discovery and registration
+      - Support for nested object mapping
+      - Full DI container integration
+      - Easy mocking support for testing
+    </PackageReleaseNotes>
+    <Copyright>Copyright (c) 2025</Copyright>
+    
+    <!-- Symbol packages -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Analyzer Development (disabled for now - requires separate analyzer project) -->
+  <!--
+  <PropertyGroup Condition="'$(EnableAnalyzer)' == 'true'">
+    <DefineConstants>$(DefineConstants);ANALYZER</DefineConstants>
+  </PropertyGroup>
+  -->
+
+</Project>

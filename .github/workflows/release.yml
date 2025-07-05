@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Extract version from tag
+      id: extract_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Extracted version: $VERSION"
+        
+    - name: Update project version
+      run: |
+        sed -i "s/<PackageVersion>.*<\/PackageVersion>/<PackageVersion>${{ steps.extract_version.outputs.VERSION }}<\/PackageVersion>/" SimpleMapper/SimpleMapper.csproj
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+      
+    - name: Test
+      run: dotnet test --no-build --configuration Release --verbosity normal
+      
+    - name: Pack
+      run: dotnet pack SimpleMapper/SimpleMapper.csproj --no-build --configuration Release --output ./artifacts
+      
+    - name: Publish to NuGet
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ steps.extract_version.outputs.VERSION }}
+        body: |
+          ## Changes in this release
+          
+          Please see the [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for detailed release notes.
+          
+          ## NuGet Package
+          
+          This release is available on NuGet:
+          ```
+          dotnet add package SimpleMapper --version ${{ steps.extract_version.outputs.VERSION }}
+          ```
+          
+          ## Installation
+          
+          ```bash
+          # Package Manager Console
+          Install-Package SimpleMapper -Version ${{ steps.extract_version.outputs.VERSION }}
+          
+          # .NET CLI
+          dotnet add package SimpleMapper --version ${{ steps.extract_version.outputs.VERSION }}
+          
+          # PackageReference
+          <PackageReference Include="SimpleMapper" Version="${{ steps.extract_version.outputs.VERSION }}" />
+          ```
+        draft: false
+        prerelease: false
+        
+    - name: Upload release assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/SimpleMapper.${{ steps.extract_version.outputs.VERSION }}.nupkg
+        asset_name: SimpleMapper.${{ steps.extract_version.outputs.VERSION }}.nupkg
+        asset_content_type: application/zip 
