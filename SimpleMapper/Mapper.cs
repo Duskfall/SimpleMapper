@@ -4,11 +4,91 @@ using Microsoft.Extensions.DependencyInjection;
 namespace SimpleMapper;
 
 /// <summary>
-/// Registry for managing mapper instances without reflection.
+/// High-performance cache key for mapper registration avoiding string allocations.
+/// Uses struct semantics with pre-computed hash codes for optimal performance.
+/// </summary>
+public readonly struct MapperKey : IEquatable<MapperKey>
+{
+    /// <summary>
+    /// The source type for the mapping.
+    /// </summary>
+    public readonly Type SourceType;
+    
+    /// <summary>
+    /// The destination type for the mapping.
+    /// </summary>
+    public readonly Type DestinationType;
+    
+    /// <summary>
+    /// Pre-computed hash code for optimal performance.
+    /// </summary>
+    public readonly int HashCode;
+
+    /// <summary>
+    /// Initializes a new instance of the MapperKey struct.
+    /// </summary>
+    /// <param name="sourceType">The source type for the mapping</param>
+    /// <param name="destinationType">The destination type for the mapping</param>
+    /// <exception cref="ArgumentNullException">Thrown when sourceType or destinationType is null</exception>
+    public MapperKey(Type sourceType, Type destinationType)
+    {
+        SourceType = sourceType ?? throw new ArgumentNullException(nameof(sourceType));
+        DestinationType = destinationType ?? throw new ArgumentNullException(nameof(destinationType));
+        HashCode = System.HashCode.Combine(sourceType, destinationType);
+    }
+
+    /// <summary>
+    /// Determines whether the current MapperKey is equal to another MapperKey.
+    /// </summary>
+    /// <param name="other">The MapperKey to compare with</param>
+    /// <returns>True if the MapperKeys are equal, false otherwise</returns>
+    public bool Equals(MapperKey other) => 
+        SourceType == other.SourceType && DestinationType == other.DestinationType;
+
+    /// <summary>
+    /// Determines whether the current MapperKey is equal to the specified object.
+    /// </summary>
+    /// <param name="obj">The object to compare with</param>
+    /// <returns>True if the objects are equal, false otherwise</returns>
+    public override bool Equals(object? obj) => 
+        obj is MapperKey other && Equals(other);
+
+    /// <summary>
+    /// Returns the pre-computed hash code for this MapperKey.
+    /// </summary>
+    /// <returns>The hash code</returns>
+    public override int GetHashCode() => HashCode;
+
+    /// <summary>
+    /// Returns a string representation of this MapperKey.
+    /// </summary>
+    /// <returns>A string in the format "SourceType -> DestinationType"</returns>
+    public override string ToString() => 
+        $"{SourceType.Name} -> {DestinationType.Name}";
+
+    /// <summary>
+    /// Determines whether two MapperKey instances are equal.
+    /// </summary>
+    /// <param name="left">The left MapperKey to compare</param>
+    /// <param name="right">The right MapperKey to compare</param>
+    /// <returns>True if the instances are equal, false otherwise</returns>
+    public static bool operator ==(MapperKey left, MapperKey right) => left.Equals(right);
+    
+    /// <summary>
+    /// Determines whether two MapperKey instances are not equal.
+    /// </summary>
+    /// <param name="left">The left MapperKey to compare</param>
+    /// <param name="right">The right MapperKey to compare</param>
+    /// <returns>True if the instances are not equal, false otherwise</returns>
+    public static bool operator !=(MapperKey left, MapperKey right) => !left.Equals(right);
+}
+
+/// <summary>
+/// Registry for managing mapper instances with high-performance caching.
 /// </summary>
 public class MapperRegistry
 {
-    private readonly ConcurrentDictionary<string, object> _mappers = new();
+    private readonly ConcurrentDictionary<MapperKey, object> _mappers = new();
     private readonly IServiceProvider _serviceProvider;
 
     /// <summary>
@@ -23,6 +103,7 @@ public class MapperRegistry
 
     /// <summary>
     /// Gets a mapper for the specified source and destination types.
+    /// Uses high-performance struct-based caching to avoid string allocations.
     /// </summary>
     /// <typeparam name="TSource">The source type</typeparam>
     /// <typeparam name="TDestination">The destination type</typeparam>
@@ -30,7 +111,7 @@ public class MapperRegistry
     /// <exception cref="InvalidOperationException">Thrown when no mapper is registered for the type pair</exception>
     public IMapper<TSource, TDestination> GetMapper<TSource, TDestination>()
     {
-        var key = $"{typeof(TSource).FullName}->{typeof(TDestination).FullName}";
+        var key = new MapperKey(typeof(TSource), typeof(TDestination));
         
         if (_mappers.TryGetValue(key, out var mapper))
         {
@@ -55,6 +136,10 @@ public class MapperRegistry
 public class Mapper : IMapper
 {
     private readonly MapperRegistry _registry;
+    
+    // High-performance cached method dispatch for type inference
+    private static readonly ConcurrentDictionary<MapperKey, Func<object, object, object>> _typeInferenceMethods = new();
+    private static readonly ConcurrentDictionary<MapperKey, Func<object, System.Collections.IEnumerable, object>> _collectionInferenceMethods = new();
 
     /// <summary>
     /// Initializes a new instance of the Mapper.
@@ -98,8 +183,8 @@ public class Mapper : IMapper
     }
 
     /// <summary>
-    /// Maps a source object to a destination object with type inference.
-    /// The source type is inferred from the parameter.
+    /// Maps a source object to a destination object with optimized type inference.
+    /// The source type is inferred from the parameter using cached method dispatch.
     /// </summary>
     /// <typeparam name="TDestination">The destination type</typeparam>
     /// <param name="source">The source object</param>
@@ -111,21 +196,17 @@ public class Mapper : IMapper
         
         var sourceType = source.GetType();
         var destinationType = typeof(TDestination);
+        var key = new MapperKey(sourceType, destinationType);
         
-        // Use reflection to call the generic Map<TSource, TDestination> method with the inferred types
-        var mapMethod = typeof(Mapper).GetMethods()
-            .First(m => m.Name == nameof(Map) && 
-                       m.GetGenericArguments().Length == 2 && 
-                       m.GetParameters().Length == 1 &&
-                       !m.GetParameters()[0].ParameterType.IsGenericType)
-            .MakeGenericMethod(sourceType, destinationType);
+        // Get or create cached method dispatch
+        var method = _typeInferenceMethods.GetOrAdd(key, CreateTypeInferenceMethod);
         
-        return (TDestination)mapMethod.Invoke(this, new[] { source })!;
+        return (TDestination)method(this, source);
     }
 
     /// <summary>
-    /// Maps a collection of source objects to a collection of destination objects with type inference.
-    /// The source type is inferred from the collection parameter.
+    /// Maps a collection of source objects to a collection of destination objects with optimized type inference.
+    /// The source type is inferred from the collection parameter using cached method dispatch.
     /// </summary>
     /// <typeparam name="TDestination">The destination type</typeparam>
     /// <param name="sources">The source objects</param>
@@ -143,20 +224,62 @@ public class Mapper : IMapper
         }
         
         var destinationType = typeof(TDestination);
+        var key = new MapperKey(sourceType, destinationType);
         
-        // Convert to strongly typed enumerable and map
-        var stronglyTypedSources = sources.Cast<object>().Where(x => x != null);
+        // Get or create cached method dispatch
+        var method = _collectionInferenceMethods.GetOrAdd(key, CreateCollectionInferenceMethod);
         
-        // Use reflection to call the generic Map method with the inferred types
+        return (IEnumerable<TDestination>)method(this, sources);
+    }
+
+    /// <summary>
+    /// Creates a cached method dispatch for type inference to avoid reflection on every call.
+    /// This method is called only once per type pair and then cached.
+    /// </summary>
+    private static Func<object, object, object> CreateTypeInferenceMethod(MapperKey key)
+    {
+        var sourceType = key.SourceType;
+        var destinationType = key.DestinationType;
+        
+        // Find the strongly typed Map<TSource, TDestination>(TSource source) method
         var mapMethod = typeof(Mapper).GetMethods()
-            .First(m => m.Name == nameof(Map) && 
+            .Where(m => m.Name == nameof(Map) && 
                        m.GetGenericArguments().Length == 2 && 
                        m.GetParameters().Length == 1 &&
-                       m.GetParameters()[0].ParameterType.IsGenericType)
+                       m.GetParameters()[0].ParameterType.IsGenericParameter)
+            .Single()
             .MakeGenericMethod(sourceType, destinationType);
         
-        var typedCollection = ConvertToTypedEnumerable(stronglyTypedSources, sourceType);
-        return (IEnumerable<TDestination>)mapMethod.Invoke(this, new[] { typedCollection })!;
+        return (mapper, source) => mapMethod.Invoke(mapper, new[] { source })!;
+    }
+
+    /// <summary>
+    /// Creates a cached method dispatch for collection type inference to avoid reflection on every call.
+    /// This method is called only once per type pair and then cached.
+    /// </summary>
+    private static Func<object, System.Collections.IEnumerable, object> CreateCollectionInferenceMethod(MapperKey key)
+    {
+        var sourceType = key.SourceType;
+        var destinationType = key.DestinationType;
+        
+        // Find the strongly typed Map<TSource, TDestination>(IEnumerable<TSource> sources) method
+        var enumerableType = typeof(IEnumerable<>).MakeGenericType(sourceType);
+        var mapMethod = typeof(Mapper).GetMethods()
+            .Where(m => m.Name == nameof(Map) && 
+                       m.GetGenericArguments().Length == 2 && 
+                       m.GetParameters().Length == 1 &&
+                       m.GetParameters()[0].ParameterType.IsGenericType &&
+                       m.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            .Single()
+            .MakeGenericMethod(sourceType, destinationType);
+        
+        return (mapper, sources) =>
+        {
+            // Convert to strongly typed enumerable and map
+            var stronglyTypedSources = sources.Cast<object>().Where(x => x != null);
+            var typedCollection = ConvertToTypedEnumerable(stronglyTypedSources, sourceType);
+            return mapMethod.Invoke(mapper, new[] { typedCollection })!;
+        };
     }
 
     private static Type? GetElementType(System.Collections.IEnumerable sources)
