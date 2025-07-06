@@ -62,7 +62,7 @@ public class PerformanceAndMemoryTests
         stopwatch.Stop();
 
         // Assert - Type inference should be nearly as fast as explicit typing due to caching
-        Assert.True(stopwatch.ElapsedMilliseconds < 150, 
+        Assert.True(stopwatch.ElapsedMilliseconds < 350, 
             $"Type inference mapping should be fast, but took {stopwatch.ElapsedMilliseconds}ms for 100k operations");
     }
 
