@@ -25,9 +25,6 @@ public class PerformanceTests
             CreatedAt = DateTime.Now
         };
 
-        // Warm up
-        factory.Map<User, UserDto>(user);
-
         // Act - Measure 10,000 single mappings
         var stopwatch = Stopwatch.StartNew();
         for (int i = 0; i < 10_000; i++)
@@ -65,9 +62,6 @@ public class PerformanceTests
                 IsActive = i % 2 == 0,
                 CreatedAt = DateTime.Now
             }).ToList();
-
-            // Warm up
-            factory.Map<User, UserDto>(users).ToList();
 
             // Act
             var stopwatch = Stopwatch.StartNew();
@@ -113,9 +107,6 @@ public class PerformanceTests
             }
         }).ToList();
 
-        // Warm up
-        factory.Map<UserWithAddresses, UserWithAddressesDto>(usersWithAddresses.Take(1)).ToList();
-
         // Act
         var stopwatch = Stopwatch.StartNew();
         var results = factory.Map<UserWithAddresses, UserWithAddressesDto>(usersWithAddresses).ToList();
@@ -156,7 +147,7 @@ public class PerformanceTests
     }
 
     [Fact]
-    public void Performance_ConcurrentMapping_ShouldNotBottleneck()
+    public async Task Performance_ConcurrentMapping_ShouldNotBottleneck()
     {
         // Arrange
         var services = new ServiceCollection();
@@ -172,9 +163,6 @@ public class PerformanceTests
             Email = $"user{i}@example.com",
             IsActive = true
         }).ToList();
-
-        // Warm up
-        factory.Map<User, UserDto>(users).ToList();
 
         var exceptions = new List<Exception>();
         var completedTasks = 0;
@@ -200,7 +188,7 @@ public class PerformanceTests
             }
         })).ToArray();
 
-        Task.WaitAll(tasks);
+        await Task.WhenAll(tasks);
         stopwatch.Stop();
 
         // Assert
@@ -294,9 +282,6 @@ public class PerformanceTests
             Email = $"user{i}@example.com",
             IsActive = true
         }).ToList();
-
-        // Warm up
-        factory.Map<User, UserDto>(users.Take(10)).ToList();
 
         // Act
         var stopwatch = Stopwatch.StartNew();

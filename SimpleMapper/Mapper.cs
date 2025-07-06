@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace SimpleMapper;
@@ -112,21 +113,20 @@ public class MapperRegistry
     public IMapper<TSource, TDestination> GetMapper<TSource, TDestination>()
     {
         var key = new MapperKey(typeof(TSource), typeof(TDestination));
-        
-        if (_mappers.TryGetValue(key, out var mapper))
-        {
-            return (IMapper<TSource, TDestination>)mapper;
-        }
 
-        // Try to get from DI container
-        var diMapper = _serviceProvider.GetService<IMapper<TSource, TDestination>>();
-        if (diMapper != null)
+        // Atomically resolve or retrieve from the cache
+        var mapperObj = _mappers.GetOrAdd(key, static (k, state) =>
         {
-            _mappers[key] = diMapper;
-            return diMapper;
-        }
+            var sp = (IServiceProvider)state!;
+            var resolved = sp.GetService<IMapper<TSource, TDestination>>();
+            if (resolved == null)
+            {
+                throw new InvalidOperationException($"No mapper registered for {typeof(TSource).Name} -> {typeof(TDestination).Name}");
+            }
+            return resolved;
+        }, _serviceProvider);
 
-        throw new InvalidOperationException($"No mapper registered for {typeof(TSource).Name} -> {typeof(TDestination).Name}");
+        return (IMapper<TSource, TDestination>)mapperObj;
     }
 }
 
@@ -140,6 +140,9 @@ public class Mapper : IMapper
     // High-performance cached method dispatch for type inference
     private static readonly ConcurrentDictionary<MapperKey, Func<object, object, object>> _typeInferenceMethods = new();
     private static readonly ConcurrentDictionary<MapperKey, Func<object, System.Collections.IEnumerable, object>> _collectionInferenceMethods = new();
+
+    // Prevent unbounded memory usage – clear caches when they grow beyond the soft limit
+    private const int MaxCachedEntries = 2048;
 
     /// <summary>
     /// Initializes a new instance of the Mapper.
@@ -201,6 +204,12 @@ public class Mapper : IMapper
         // Get or create cached method dispatch
         var method = _typeInferenceMethods.GetOrAdd(key, CreateTypeInferenceMethod);
         
+        // Simple eviction strategy: clear the whole cache when it grows too large.
+        if (_typeInferenceMethods.Count > MaxCachedEntries)
+        {
+            _typeInferenceMethods.Clear();
+        }
+
         return (TDestination)method(this, source);
     }
 
@@ -229,6 +238,12 @@ public class Mapper : IMapper
         // Get or create cached method dispatch
         var method = _collectionInferenceMethods.GetOrAdd(key, CreateCollectionInferenceMethod);
         
+        // Simple eviction strategy: clear the whole cache when it grows too large.
+        if (_collectionInferenceMethods.Count > MaxCachedEntries)
+        {
+            _collectionInferenceMethods.Clear();
+        }
+
         return (IEnumerable<TDestination>)method(this, sources);
     }
 
@@ -250,7 +265,18 @@ public class Mapper : IMapper
             .Single()
             .MakeGenericMethod(sourceType, destinationType);
         
-        return (mapper, source) => mapMethod.Invoke(mapper, new[] { source })!;
+        return (mapper, source) => 
+        {
+            try
+            {
+                return mapMethod.Invoke(mapper, new[] { source })!;
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                // Unwrap the inner exception to preserve the original exception type
+                throw ex.InnerException;
+            }
+        };
     }
 
     /// <summary>
@@ -275,10 +301,18 @@ public class Mapper : IMapper
         
         return (mapper, sources) =>
         {
-            // Convert to strongly typed enumerable and map
-            var stronglyTypedSources = sources.Cast<object>().Where(x => x != null);
-            var typedCollection = ConvertToTypedEnumerable(stronglyTypedSources, sourceType);
-            return mapMethod.Invoke(mapper, new[] { typedCollection })!;
+            try
+            {
+                // Convert to strongly typed enumerable and map
+                var stronglyTypedSources = sources.Cast<object>().Where(x => x != null);
+                var typedCollection = ConvertToTypedEnumerable(stronglyTypedSources, sourceType);
+                return mapMethod.Invoke(mapper, new[] { typedCollection })!;
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                // Unwrap the inner exception to preserve the original exception type
+                throw ex.InnerException;
+            }
         };
     }
 

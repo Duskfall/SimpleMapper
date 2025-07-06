@@ -24,10 +24,11 @@ dotnet add package SimpleMapper
 
 ```csharp
 // Option 1: Automatic discovery from current assembly
-builder.Services.AddSimpleMapperWithAutoDiscovery();
+builder.Services.AddSimpleMapper();
 
 // Option 2: Automatic discovery from specific assembly
-builder.Services.AddSimpleMapperWithAutoDiscovery<UserEntity>();
+// Scan the assembly containing UserEntity
+builder.Services.AddSimpleMapper<UserEntity>();
 
 // Option 3: Manual registration (with automatic mapper inference)
 builder.Services.AddSimpleMapper()
@@ -406,97 +407,4 @@ return lightweightData.Select(d => _mapper.Map<UserDto>(d)).ToList();
 
 ### Nested Object Mapping
 
-For complex objects with nested mappings, inject `IMapper`:
-
-```csharp
-public class UserWithAddressesMapper : BaseMapper<UserEntity, UserDto>
-{
-    private readonly IMapper _mapper;
-
-    public UserWithAddressesMapper(IMapper mapper)
-    {
-        _mapper = mapper;
-    }
-
-    public override UserDto Map(UserEntity source)
-    {
-        return new UserDto
-        {
-            Id = source.Id,
-            FullName = $"{source.FirstName} {source.LastName}",
-            Email = source.Email,
-            // Map nested collections
-            Addresses = _mapper.Map<Address, AddressDto>(source.Addresses).ToList()
-        };
-    }
-}
-```
-
-### Feature Folder Organization
-
-Perfect for vertical slice architecture:
-
-```
-MyApp/
-├── Features/
-│   ├── Users/
-│   │   ├── UserEntity.cs
-│   │   ├── UserDto.cs
-│   │   ├── UserMapper.cs      ← Auto-discovered!
-│   │   └── UserService.cs
-│   └── Products/
-│       ├── ProductEntity.cs
-│       ├── ProductDto.cs
-│       ├── ProductMapper.cs   ← Auto-discovered!
-│       └── ProductService.cs
-```
-
-## Testing
-
-SimpleMapper is designed for easy testing with full mocking support:
-
-```csharp
-[Test]
-public void Should_Map_User_Correctly()
-{
-    // Arrange
-    var mockMapper = new Mock<IMapper>();
-    mockMapper.Setup(x => x.Map<UserEntity, UserDto>(It.IsAny<UserEntity>()))
-                    .Returns((UserEntity user) => new UserDto { Id = user.Id });
-
-    var service = new UserService(mockMapper.Object);
-    var entity = new UserEntity { Id = 1, FirstName = "John" };
-
-    // Act
-    var result = service.GetUser(entity);
-
-    // Assert
-    Assert.AreEqual(1, result.Id);
-}
-```
-
-## Registration Options
-
-| Method | Description | Use Case |
-|--------|-------------|----------|
-| `AddSimpleMapper()` | Basic registration | Manual mapper registration |
-| `AddMapper<TSource, TDestination>()` | Register single mapper (inferred) | Selective registration with validation |
-| `AddSimpleMapperWithAutoDiscovery()` | Auto-discovery from calling assembly | Single-assembly applications |
-| `AddSimpleMapperWithAutoDiscovery<T>()` | Auto-discovery from specified assembly | Multi-assembly applications |
-| `AddMappersFromAssembly(assembly)` | Scan specific assembly | Granular control |
-| `AddMappersFromAssemblies(assemblies)` | Scan multiple assemblies | Complex applications |
-
-## Performance
-
-- **Zero reflection at runtime** - All mapping is done through compiled code
-- **Singleton registration** - Mappers are registered once and reused
-- **Thread-safe** - Safe for concurrent use
-- **Minimal allocations** - Efficient memory usage
-
-## License
-
-MIT License - see LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. 
+For complex objects with nested mappings, inject `

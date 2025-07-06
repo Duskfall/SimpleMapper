@@ -6,20 +6,25 @@ namespace SimpleMapper;
 /// IMPORTANT: Mappers should NOT have constructor parameters or inject services.
 /// Mappers should be pure data transformation functions with no dependencies.
 /// 
-/// ❌ DON'T DO THIS:
+/// IMPORTANT: Prefer keeping mappers free of heavy dependencies.  If your mapping logic requires additional helpers, you *may* inject lightweight services via the constructor, but keep the work synchronous and side-effect free.
+///
+/// ❌ ANTI-PATTERN (slow I/O / async blocking inside a mapper):
 /// <code>
 /// public class BadMapper : BaseMapper&lt;User, UserDto&gt;
 /// {
-///     private readonly IService _service; // ❌ No dependencies!
-///     public BadMapper(IService service) { _service = service; } // ❌ No constructor params!
+///     private readonly IExternalHttpService _http;
+///     public BadMapper(IExternalHttpService http) => _http = http;  // Heavy dependency
+///     public override UserDto Map(User src) => _http.GetFromApi(src.Id).Result; // ❌ Blocking async / I/O
 /// }
 /// </code>
-/// 
-/// ✅ DO THIS:
+///
+/// ✅ RECOMMENDED:
 /// <code>
 /// public class GoodMapper : BaseMapper&lt;User, UserDto&gt;
 /// {
-///     public override UserDto Map(User source) => new UserDto { Id = source.Id };
+///     private readonly IClock _clock; // lightweight, synchronous dependency is fine
+///     public GoodMapper(IClock clock) => _clock = clock;
+///     public override UserDto Map(User src) => new () { Id = src.Id, Created = _clock.Now };
 /// }
 /// </code>
 /// </summary>

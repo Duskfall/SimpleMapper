@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace SimpleMapper;
 
@@ -22,8 +23,8 @@ public static class ServiceCollectionExtensions
     /// </example>
     public static IServiceCollection AddSimpleMapper(this IServiceCollection services)
     {
-        services.AddSingleton<MapperRegistry>();
-        services.AddSingleton<IMapper, Mapper>();
+        services.TryAddSingleton<MapperRegistry>();
+        services.TryAddSingleton<IMapper, Mapper>();
         
         // Auto-discover mappers from the calling assembly
         return services.AddMappersFromAssembly(Assembly.GetCallingAssembly());
@@ -44,8 +45,8 @@ public static class ServiceCollectionExtensions
     /// </example>
     public static IServiceCollection AddSimpleMapper<TAssemblyMarker>(this IServiceCollection services)
     {
-        services.AddSingleton<MapperRegistry>();
-        services.AddSingleton<IMapper, Mapper>();
+        services.TryAddSingleton<MapperRegistry>();
+        services.TryAddSingleton<IMapper, Mapper>();
         
         return services.AddMappersFromAssembly(typeof(TAssemblyMarker).Assembly);
     }
@@ -65,8 +66,8 @@ public static class ServiceCollectionExtensions
     /// </example>
     public static IServiceCollection AddSimpleMapper(this IServiceCollection services, params Assembly[] assemblies)
     {
-        services.AddSingleton<MapperRegistry>();
-        services.AddSingleton<IMapper, Mapper>();
+        services.TryAddSingleton<MapperRegistry>();
+        services.TryAddSingleton<IMapper, Mapper>();
         
         foreach (var assembly in assemblies)
         {

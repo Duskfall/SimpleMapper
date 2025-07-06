@@ -1,6 +1,7 @@
 using SimpleMapper;
 
-namespace SimpleMapper.Tests.TestModels;
+namespace SimpleMapper.Tests.TestModels
+{
 
 // Enum types for testing
 public enum UserRole
@@ -455,12 +456,10 @@ public class AddressMapper : BaseMapper<Address, AddressDto>
 
 public class UserWithAddressesMapper : BaseMapper<UserWithAddresses, UserWithAddressesDto>
 {
-    private readonly IMapper _mapper;
+    // Use a single stateless AddressMapper instance for nested mapping to avoid constructor injection
+    private static readonly AddressMapper _addressMapper = new();
 
-    public UserWithAddressesMapper(IMapper mapper)
-    {
-        _mapper = mapper;
-    }
+    // Parameterless constructor keeps mapper free of DI dependencies (pure mapping function)
 
     public override UserWithAddressesDto Map(UserWithAddresses source)
     {
@@ -469,7 +468,7 @@ public class UserWithAddressesMapper : BaseMapper<UserWithAddresses, UserWithAdd
             Id = source.Id,
             FullName = $"{source.FirstName} {source.LastName}",
             Email = source.Email,
-            Addresses = _mapper.Map<Address, AddressDto>(source.Addresses).ToList()
+            Addresses = source.Addresses.Select(addr => _addressMapper.Map(addr)).ToList()
         };
     }
 }
@@ -513,11 +512,73 @@ public class InvalidDestination
     public string Value { get; set; } = string.Empty;
 }
 
-// Mapper that throws exception for testing error handling - not auto-discoverable
-public class ThrowingMapperForTesting
+// Test models for circular reference scenarios
+public class CircularSource
 {
-    public UserDto Map(User source)
+    public int Id { get; set; }
+    public CircularSource? Child { get; set; }
+}
+
+public class CircularDestination
+{
+    public int Id { get; set; }
+    public CircularDestination? Child { get; set; }
+}
+
+public class CircularReferenceMapper : BaseMapper<CircularSource, CircularDestination>
+{
+    // Thread-safe mapping by using a per-call visited set instead of a shared HashSet
+    public override CircularDestination Map(CircularSource source)
     {
-        throw new InvalidOperationException("Test exception");
+        if (source == null) throw new ArgumentNullException(nameof(source));
+        return MapInternal(source, new HashSet<CircularSource>());
+    }
+
+    private CircularDestination MapInternal(CircularSource source, HashSet<CircularSource> visited)
+    {
+        if (visited.Contains(source))
+        {
+            return new CircularDestination { Id = source.Id, Child = null };
+        }
+
+        visited.Add(source);
+        try
+        {
+            return new CircularDestination
+            {
+                Id = source.Id,
+                Child = source.Child != null ? MapInternal(source.Child, visited) : null
+            };
+        }
+        finally
+        {
+            visited.Remove(source);
+        }
+    }
+}
+}
+
+namespace SimpleMapper.Tests.TestModels.NonDiscoverable
+{
+    // Test types for error testing that don't conflict with main mappers
+    public class ErrorTestSource
+    {
+        public int Id { get; set; }
+        public string Data { get; set; } = string.Empty;
+    }
+
+    public class ErrorTestDestination
+    {
+        public int Id { get; set; }
+        public string ProcessedData { get; set; } = string.Empty;
+    }
+
+    // Mapper that throws exception for testing error handling - not auto-discoverable
+    public class ThrowingMapperForTesting : IMapper<ErrorTestSource, ErrorTestDestination>
+    {
+        public ErrorTestDestination Map(ErrorTestSource source)
+        {
+            throw new InvalidOperationException("Test exception");
+        }
     }
 } 

@@ -115,11 +115,11 @@ public class BaseMapperTests
     public void ThrowingMapper_ShouldPropagateException()
     {
         // Arrange
-        var throwingMapper = new ThrowingMapperForTesting();
-        var user = new User();
+        var throwingMapper = new TestModels.NonDiscoverable.ThrowingMapperForTesting();
+        var source = new TestModels.NonDiscoverable.ErrorTestSource();
 
         // Act & Assert
-        var exception = Assert.Throws<InvalidOperationException>(() => throwingMapper.Map(user));
+        var exception = Assert.Throws<InvalidOperationException>(() => throwingMapper.Map(source));
         Assert.Equal("Test exception", exception.Message);
     }
 } 
