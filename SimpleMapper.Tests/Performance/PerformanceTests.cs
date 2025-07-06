@@ -36,7 +36,7 @@ public class PerformanceTests
         // Assert
         Assert.True(stopwatch.ElapsedMilliseconds < 100, "10,000 single mappings should complete in under 100ms");
         var averageTimePerMapping = (double)stopwatch.ElapsedTicks / 10_000 / TimeSpan.TicksPerMicrosecond;
-        Assert.True(averageTimePerMapping < 100, "Average mapping time should be under 10 microseconds");
+        Assert.True(averageTimePerMapping < 100, "Average mapping time should be under 100 microseconds");
     }
 
     [Fact]
